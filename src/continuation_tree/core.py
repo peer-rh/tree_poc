@@ -12,6 +12,7 @@ class PromptRecord:
     prompt_id: str
     input_ids: tuple[int, ...]
     tokens: tuple[str, ...] | None = None
+    anchor_start_index: int = 0
 
     def token_text(self, token_id: int) -> str:
         if self.tokens is None:
@@ -136,7 +137,8 @@ class ContinuationTreeGenerator:
         if len(logits) != len(prompt.input_ids) - 1:
             raise ValueError("prefill_logits must return one row per valid anchor position.")
         candidates: list[AnchorCandidate] = []
-        for token_index in range(len(prompt.input_ids) - 1):
+        anchor_start_index = max(prompt.anchor_start_index, 0)
+        for token_index in range(anchor_start_index, len(prompt.input_ids) - 1):
             probs = _softmax(logits[token_index])
             observed_token_id = prompt.input_ids[token_index + 1]
             score = float(1.0 - probs[observed_token_id])

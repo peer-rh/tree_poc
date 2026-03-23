@@ -21,16 +21,24 @@ def hf_dataset_to_prompts(
     prompt_id_column: str = "id",
     input_ids_column: str | None = "input_ids",
     text_column: str | None = "text",
+    prompt_column: str | None = None,
+    response_column: str | None = None,
     tokenizer_name: str | None = None,
+    text_joiner: str = "",
     max_examples: int | None = None,
 ) -> list[PromptRecord]:
     prompts: list[PromptRecord] = []
     tokenizer = None
-    if input_ids_column is None and text_column is None:
+    use_prompt_response_columns = prompt_column is not None or response_column is not None
+    if use_prompt_response_columns and (prompt_column is None or response_column is None):
+        raise ValueError("prompt_column and response_column must be provided together.")
+    if not use_prompt_response_columns and input_ids_column is None and text_column is None:
         raise ValueError("Either input_ids_column or text_column must be provided.")
-    if input_ids_column is None:
+    if use_prompt_response_columns or input_ids_column is None:
         if tokenizer_name is None:
-            raise ValueError("tokenizer_name is required when input_ids_column is not provided.")
+            raise ValueError(
+                "tokenizer_name is required when tokenizing text or prompt/response columns."
+            )
         transformers = _require_dependency("transformers", "transformers")
         tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_name)
 
@@ -38,12 +46,36 @@ def hf_dataset_to_prompts(
         if max_examples is not None and index >= max_examples:
             break
         prompt_id = str(row.get(prompt_id_column, index))
-        if input_ids_column is not None and row.get(input_ids_column) is not None:
+        anchor_start_index = 0
+        if use_prompt_response_columns:
+            prompt_text = str(row.get(prompt_column, "") or "")
+            response_text = str(row.get(response_column, "") or "")
+            prompt_ids = tuple(
+                int(token_id)
+                for token_id in tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
+            )
+            joiner_ids = tuple(
+                int(token_id)
+                for token_id in tokenizer(text_joiner, add_special_tokens=False)["input_ids"]
+            )
+            response_ids = tuple(
+                int(token_id)
+                for token_id in tokenizer(response_text, add_special_tokens=False)["input_ids"]
+            )
+            input_ids = prompt_ids + joiner_ids + response_ids
+            anchor_start_index = len(prompt_ids) + len(joiner_ids)
+        elif input_ids_column is not None and row.get(input_ids_column) is not None:
             input_ids = tuple(int(token_id) for token_id in row[input_ids_column])
         else:
             encoded = tokenizer(row[text_column], add_special_tokens=False)
             input_ids = tuple(int(token_id) for token_id in encoded["input_ids"])
-        prompts.append(PromptRecord(prompt_id=prompt_id, input_ids=input_ids))
+        prompts.append(
+            PromptRecord(
+                prompt_id=prompt_id,
+                input_ids=input_ids,
+                anchor_start_index=anchor_start_index,
+            )
+        )
     return prompts
 
 

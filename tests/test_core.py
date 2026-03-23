@@ -41,6 +41,14 @@ def test_anchor_scoring_prefers_branchy_position():
     assert anchors[0].observed_token_id == 4
 
 
+def test_anchor_scoring_can_skip_prompt_prefix():
+    prompt = PromptRecord(prompt_id="p1", input_ids=(1, 2, 3, 4), anchor_start_index=2)
+    generator = ContinuationTreeGenerator(_build_model())
+    anchors = generator.select_top_anchors(prompt, 2)
+    assert [anchor.token_index for anchor in anchors] == [2]
+    assert anchors[0].observed_token_id == 4
+
+
 def test_forced_observed_token_becomes_root_rank_zero():
     prompt = PromptRecord(prompt_id="p1", input_ids=(1, 2, 3, 4))
     generator = ContinuationTreeGenerator(_build_model())
